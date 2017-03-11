@@ -1,0 +1,142 @@
+---
+title: "Logistic Regression"
+author: "Yuping He"
+date: "July 30, 2016"
+output: word_document
+---
+```{r}
+loan_data <- readRDS("loan data.rds")
+training_set <- readRDS("training.rds")
+test_set <- readRDS("test.rds")
+```
+
+
+Basic Logistic Regression
+```{r}
+# Build a glm model with variable ir_cat as a predictor
+log_model_cat <- glm(loan_status ~ ir_cat, family = "binomial", data=training_set)
+
+# Print the parameter estimates 
+log_model_cat
+
+# Look at the different categories in ir_cat using table()
+table(loan_data$ir_cat)
+```
+
+Interpreting the odds for a categorical variable
+```{r}
+exp(log_model_cat$coefficients[-1])
+# Compared to the reference category with interest rates between 0% and 8%, the odds in favor of default change by a multiple of 1.718.
+```
+
+Multiple variables in a logistic regression model
+```{r}
+# Build the logistic regression model
+log_model_full <- glm(loan_status ~ ., family = "binomial", data=training_set)
+
+# Obtain significance levels using summary()
+summary(log_model_full)
+
+# Interpreting significance levels: The parameter estimates for loan_amount and annual_inc are Of the same order, however, annual_inc is statistically significant where loan_amount is not.
+
+# Make PD-predictions for all test set elements using the the full logistic regression model
+predictions_all_full <- predict(log_model_full, newdata = test_set, type="response")
+
+# Look at the predictions range
+round(range(predictions_all_full), 3)
+
+# Make a binary predictions-vector using a cut-off
+pred_cutoff <- function(cutoff) {
+  predictions <- ifelse(predictions_all_full > cutoff, 1, 0)
+  confusion_matrix <- table(test_set$loan_status, predictions)
+  print(confusion_matrix)
+  accuracy <- sum(diag(confusion_matrix))/ sum(confusion_matrix)
+  sens <- confusion_matrix[2,2] / sum(confusion_matrix[2,])
+  spec <- confusion_matrix[1,1] / sum(confusion_matrix[1,])
+  data.frame(Value=round(c(accuracy, sens, spec),2),row.names=c("Classification accuracy","Sensitivity","Specificity"))
+}
+
+# cut_off of 15% and 20%
+pred_cutoff(0.15)
+pred_cutoff(0.20)
+```
+
+Comparing link functions for a given cut-off:14%
+```{r}
+# Fit the logit, probit and cloglog-link logistic regression models
+log_model_logit <- glm(loan_status ~ age + emp_cat + ir_cat + loan_amnt,
+                       family = binomial(link = logit), data = training_set)
+log_model_probit <- glm(loan_status ~ age + emp_cat + ir_cat + loan_amnt,
+                       family = binomial(link = probit), data = training_set)
+
+log_model_cloglog <- glm(loan_status ~ age + emp_cat + ir_cat + loan_amnt,
+                       family = binomial(link = cloglog), data = training_set)
+
+# Make predictions for all models using the test set
+predictions_logit <- predict(log_model_logit, newdata = test_set, type = "response")
+predictions_probit <- predict(log_model_probit, newdata = test_set, type = "response")
+predictions_cloglog <- predict(log_model_cloglog, newdata = test_set, type = "response")
+
+# Make a binary predictions-vector using a cut-off
+pred_cutoff <- function(model_type, cutoff) {
+  predictions <- ifelse(model_type > cutoff, 1, 0)
+  confusion_matrix <- table(test_set$loan_status, predictions)
+  print(confusion_matrix)
+  accuracy <- sum(diag(confusion_matrix))/ sum(confusion_matrix)
+  sens <- confusion_matrix[2,2] / sum(confusion_matrix[2,])
+  spec <- confusion_matrix[1,1] / sum(confusion_matrix[1,])
+  data.frame(Value=round(c(accuracy, sens, spec),2),row.names=c("Classification accuracy","Sensitivity","Specificity"))
+}
+
+pred_cutoff(predictions_logit, 0.14)
+pred_cutoff(predictions_probit, 0.14)
+pred_cutoff(predictions_cloglog, 0.14)
+```
+
+ROC-curves for comparison of logistic regression models
+```{r}
+# Load the pROC-package
+library(pROC)
+
+# Construct the objects containing ROC-information
+ROC_logit <- roc(test_set$loan_status, predictions_logit)
+ROC_probit <- roc(test_set$loan_status, predictions_probit)
+ROC_cloglog <- roc(test_set$loan_status, predictions_cloglog)
+ROC_all_full <- roc(test_set$loan_status, predictions_all_full)
+
+# Draw all ROCs on one plot
+
+library(purrr)
+ROC_logit$title <- "logit"
+ROC_probit$title <- "probit"
+ROC_cloglog$title <- "cloglog"
+ROC_all_full$title <- "all_full"
+
+roc_models <- map_df(list(ROC_logit, ROC_probit, ROC_cloglog, ROC_all_full),
+    function(df) data.frame(Specificity=df$specificities, 
+                            Sensitivity=df$sensitivities,
+                            Model=(df$title)))
+roc_models$Model <- as.factor(roc_models$Model)   
+
+
+library(ggplot2)
+ggplot(data=roc_models,aes(x=Specificity, y=Sensitivity, col=Model)) + 
+  geom_line() + 
+  scale_x_reverse() +
+  scale_color_manual(values=c("red", "yellow", "black", "green")) +
+  theme(legend.position=c(0.75,0.4)) +
+  labs(title="ROCs")
+
+# Compute the AUCs
+library(purrr)
+map(list(ROC_logit, ROC_probit, ROC_cloglog, ROC_all_full), auc)
+
+```
+
+AUC-based pruning, on log_model_full
+```{r}
+
+```
+
+
+

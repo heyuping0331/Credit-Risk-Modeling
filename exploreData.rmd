@@ -1,0 +1,137 @@
+---
+title: "Explore Data"
+author: "Yuping He"
+date: "July 27, 2016"
+output: word_document
+---
+
+
+```{r}
+loan_data <- readRDS("loan_data_ch1.rds")
+
+str(loan_data)
+
+summary(loan_data)
+```
+
+Pivot tables to explore data
+```{r}
+library(gmodels)
+CrossTable(loan_data$loan_status)
+CrossTable(loan_data$grade, loan_data$loan_status, prop.r=TRUE, prop.c = FALSE, prop.t = FALSE, prop.chisq = FALSE)
+```
+The proportion of defaults increases when the credit rating moves from A to G.
+
+Histograms to explore data
+```{r}
+library(ggplot2)
+
+ggplot(loan_data, aes(x=loan_amnt,fill=home_ownership)) + 
+  geom_histogram(binwidth = 1000) +
+  scale_x_continuous(breaks=seq(0,35000, 10000)) + 
+  labs(title="Histogram of Loan Amount", x="Dollars") +
+  theme(panel.grid.minor=element_blank())
+
+# More ggplot visualizations
+```
+
+Remove outliers
+```{r}
+ggplot(loan_data, aes(x=c(1:29092),y=age)) + 
+  geom_point() +
+  labs(x=NULL, y="Age") +
+  theme(panel.grid.minor=element_blank())
+
+# Save the outlier's index 
+index_highage <- which(loan_data$age > 122)
+
+# New dataset without outliers
+loan_data <- loan_data[-index_highage,]
+
+# scatterplot of demographic information: age, annual income and 
+ggplot(loan_data, aes(x=age, y=annual_inc, col=emp_length)) + 
+  geom_jitter(alpha=0.3) + 
+  labs(x="Age", y="Annual Income",col="Emp Length") + 
+  facet_grid(home_ownership~.)+
+  theme(legend.title=element_text(size=8))
+```
+
+Delete missing data
+```{r}
+# Look at summary of loan_data
+summary(loan_data$int_rate)
+
+# Get indices of missing interest rates: na_index
+na_index <- which(is.na(loan_data$int_rate))
+
+# Remove observations with missing interest rates: loan_data_delrow_na
+loan_data_delrow_na <- loan_data[-na_index, ]
+
+# Make copy of loan_data
+loan_data_delcol_na <- loan_data
+
+# Delete interest rate column from loan_data_delcol_na
+loan_data_delcol_na$int_rate <- NULL
+```
+
+Replacing missing data
+```{r}
+# Compute the median of int_rate
+median_ir <- median(loan_data$int_rate, na.rm=T)
+
+# Make copy of loan_data
+loan_data_replace <- loan_data
+
+# Replace missing interest rates with median
+loan_data_replace$int_rate[na_index] <- median_ir
+
+# Check if the NAs are gone
+summary(loan_data_replace$int_rate)
+```
+
+Keeping missing data: coarse classification
+```{r}
+# Coarse classification on employment length
+loan_data$emp_cat <- rep(NA, length(loan_data$emp_length))
+loan_data$emp_cat[which(loan_data$emp_length <= 15)] <- "0-15"
+loan_data$emp_cat[which(loan_data$emp_length > 15 & loan_data$emp_length <= 30)] <- "15-30"
+loan_data$emp_cat[which(loan_data$emp_length > 30 & loan_data$emp_length <= 45)] <- "30-45"
+loan_data$emp_cat[which(loan_data$emp_length > 45)] <- "45+"
+loan_data$emp_cat[which(is.na(loan_data$emp_length))] <- "Missing"
+loan_data$emp_cat <- as.factor(loan_data$emp_cat)
+
+# Coarse classification on interest rate 
+loan_data$ir_cat <- rep(NA, length(loan_data$int_rate))
+loan_data$ir_cat[which(loan_data$int_rate <= 8)] <- "0-8"
+loan_data$ir_cat[which(loan_data$int_rate > 8 & loan_data$int_rate <= 11)] <- "8-11"
+loan_data$ir_cat[which(loan_data$int_rate > 11 & loan_data$int_rate <= 13.5)] <- "11-13.5"
+loan_data$ir_cat[which(loan_data$int_rate > 13.5)] <- "13.5+"
+loan_data$ir_cat[which(is.na(loan_data$int_rate))] <- "Missing"
+loan_data$ir_cat <- as.factor(loan_data$ir_cat)
+
+# Look at your new variable using plot()
+#plot(loan_data$ir_cat, main="Interest Category")
+loan_data$int_rate <- NULL
+loan_data$emp_length <- NULL
+
+summary(loan_data)
+
+```
+
+Split dataset
+```{r}
+# Set seed of 567
+set.seed(567)
+
+# Store row numbers for training set: index_train
+# index_train <- sample(1:nrow(loan_data), 2/3*nrow(loan_data))
+
+# Create training set: training_set
+# training_set <- loan_data[index_train, ]
+# saveRDS(training_set, file="training.rds")
+
+# Create test set: test_set
+# test_set <- loan_data[-index_train, ]
+# saveRDS(test_set, file="test.rds")
+```
+

@@ -1,0 +1,71 @@
+---
+title: "Evaluate a Credit Risk Model"
+author: "Yuping He"
+date: "July 30, 2016"
+output: word_document
+---
+
+
+
+Computing a bad rate (percentage of defaults) given a fixed acceptance rate
+```{r}
+# Make predictions for the probability of default using the pruned tree and the test set.
+prob_default_prior <- predict(ptree_prior, newdata = test_set)[ ,2]
+
+# Obtain the cutoff for acceptance rate 80%
+ cutoff_prior <- quantile(prob_default_prior, 0.8)
+
+# Obtain the binary predictions.
+bin_pred_prior_80 <- ifelse(prob_default_prior > cutoff_prior, 1, 0)
+
+# Obtain the actual default status for the accepted loans
+accepted_status_prior_80 <- test_set$loan_status[bin_pred_prior_80 == 0]
+
+# Obtain the bad rate for the accepted loans
+bad_rate1 <- sum(accepted_status_prior_80) / length(accepted_status_prior_80)
+round(bad_rate1,4)
+```
+
+The strategy table and strategy curve
+```{r}
+# This function computes the cut-off and bad rate for the acceptance rates that are multiples of 5% (0%, 5%, 10%, ...)
+strategy_bank <- function(prob_of_def){
+cutoff=rep(NA, 21)
+bad_rate=rep(NA, 21)
+accept_rate=seq(1,0,by=-0.05)
+for (i in 1:21){
+  cutoff[i]=quantile(prob_of_def,accept_rate[i])
+  pred_i=ifelse(prob_of_def> cutoff[i], 1, 0)
+  pred_as_good=test_set$loan_status[pred_i==0]
+  bad_rate[i]=sum(pred_as_good)/length(pred_as_good)}
+table=cbind(accept_rate,cutoff=round(cutoff,4),bad_rate=round(bad_rate,4))
+return(list(table=table,bad_rate=bad_rate, accept_rate=accept_rate, cutoff=cutoff))
+}
+
+# Apply the function strategy_bank to both predictions_cloglog and predictions_loss_matrix
+strategy_cloglog <- strategy_bank(predictions_cloglog)
+strategy_loss_matrix <- strategy_bank(predictions_loss_matrix)
+
+# Obtain the strategy tables for both prediction-vectors
+strategy_cloglog$table
+strategy_loss_matrix$table
+
+# Plot the strategy functions
+strategy_cloglog$title <- "cloglog"
+strategy_loss_matrix$title <- "loss_matrix"
+
+strategy_df <- map_df(list(strategy_cloglog, strategy_loss_matrix),
+    function(df) data.frame(Accept_rate=df$accept_rate, 
+                            Bad_rate=df$bad_rate,
+                            Model=(df$title)))
+
+strategy_df$Model <- as.factor(strategy_df$Model) 
+
+
+ggplot(strategy_df, aes(x=Accept_rate, y=Bad_rate, col=Model)) + 
+  geom_line(size=2) + 
+  labs(title="Strategy Curves", x="Acceptance Rate", y="Bad Rate")+
+  theme(legend.position=c(0.75,0.3))
+```
+
+

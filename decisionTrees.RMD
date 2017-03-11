@@ -1,0 +1,237 @@
+---
+title: "Decision Trees"
+author: "Yuping He"
+date: "July 30, 2016"
+output: word_document
+---
+
+To overcome the unbalanced data problem, you can use under- or oversampling. The training set has been undersampled for you, such that 1/3 of the training set consists of defaults, and 2/3 of non-defaults. 
+```{r}
+training_set <- readRDS("training.rds")
+test_set <- readRDS("test.rds")
+```
+
+Method1: Undersampling data
+```{r}
+undersampled_training_set <- read.delim(file="undersampled training set.txt", header=T, sep="")
+
+# Load package rpart() in your workspace.
+library(rpart)
+library(rpart.plot)
+
+# Change the code provided in the video such that a decision tree is constructed using the undersampled training set. Include rpart.control to relax the complexity parameter to 0.001.
+tree_undersample <- rpart(loan_status ~ ., method = "class", 
+                          data =  undersampled_training_set,
+                          control=rpart.control(cp=0.001))
+
+# Plot the decision tree
+# plot(tree_undersample, uniform=T)
+rpart.plot(tree_undersample, uniform=T)
+library(rattle)
+# Add labels to the decision tree 
+# text(tree_undersample)
+```
+Pruning the tree with undersampled data
+```{r}
+# set a seed and run the code to construct the tree with undersampling
+set.seed(345)
+
+# Plot the cross-validated error rate as a function of the complexity parameter
+plotcp(tree_undersample)
+
+# Use printcp() to identify for which complexity parameter the cross-validated error rate is minimized. 
+printcp(tree_undersample)
+
+# Create an index for of the row with the minimum xerror
+index <- which.min(tree_undersample$cptable[ , "xerror"])
+
+# Create tree_min
+tree_min <- tree_undersample$cptable[index, "CP"]
+
+# Prune the tree using tree_min
+ptree_undersample <- prune(tree_undersample, cp=tree_min)
+
+# Use prp() and argument extra = 1 to plot the pruned tree
+prp(ptree_undersample, extra=1, main="Undersampled Decision Tree")
+rpart.plot(ptree_undersample, extra=1, tweak=1.1)
+```
+
+
+Method 2:
+Changing the prior probabilities: 
+```{r}
+# "parms = list(prior=c(non_default_proportion, default_proportion))"
+# a tree is constructed with adjusted prior probabilities.
+tree_prior <- rpart(loan_status ~ ., method = "class", 
+                    data = training_set,
+                    control = rpart.control(cp = 0.001),
+                    parms = list(prior=c(0.7, 0.3)))
+
+# Plot the decision tree
+# plot(tree_prior, uniform=T)
+fancyRpartPlot(tree_prior, uniform=T)
+
+# Add labels to the decision tree 
+# text(tree_prior)
+```
+Pruning the tree with changed prior probabilities
+```{r}
+set.seed(345)
+# Plot the cross-validated error rate as a function of the complexity parameter
+plotcp(tree_prior)
+
+# Use printcp() to identify for which complexity parameter the cross-validated error rate is minimized. 
+printcp(tree_prior)
+
+# Create an index for of the row with the minimum xerror
+index <- which.min(tree_prior$cptable[ , "xerror"])
+
+# Create tree_min
+tree_min <- tree_prior$cptable[index, "CP"]
+
+#  Prune the tree using tree_min
+ptree_prior <- prune(tree_prior, cp = tree_min)
+
+# Use prp() to plot the pruned tree
+# prp(ptree_prior)
+# fancyRpartPlot(ptree_prior)
+rpart.plot(ptree_prior, extra=1, tweak=1.6)
+```
+
+Method 3: Including a loss matrix
+A loss matrix changes the relative importance of misclassifying a default as non-default versus a non-default as a default. You want to stress that misclassifying a default as a non-default should be penalized more heavily. Doing this, you are constructing a 2x2-matrix with zeroes on the diagonal and changed loss penalties off-diagonal. The default loss matrix is all ones off-diagonal
+```{r}
+# "parms = list(loss = matrix(c(0, cost_def_as_nondef, cost_nondef_as_def, 0), ncol=2))"
+
+
+# a decision tree is constructed using a loss matrix penalizing 10 times more heavily for misclassified defaults.
+tree_loss_matrix <- rpart(loan_status ~ ., method = "class", 
+                          data =  training_set,
+                          parms = list(loss = matrix(c(0, 10, 1, 0), ncol=2)),
+                          control=rpart.control(cp=0.001))
+
+
+# Plot the decision tree
+plot(tree_loss_matrix, uniform=T)
+fancyRpartPlot(tree_loss_matrix,uniform=T)
+# Add labels to the decision tree 
+# text(tree_loss_matrix)
+```
+
+Pruning the tree with the loss matrix
+```{r}
+# set a seed and run the code to construct the tree with the loss matrix again
+set.seed(345)
+
+# Plot the cross-validated error rate as a function of the complexity parameter
+plotcp(tree_loss_matrix)
+
+# Prune the tree using cp = 0.0012788
+ptree_loss_matrix <- prune(tree_loss_matrix, cp=0.0012788)
+
+# Use prp() and argument extra = 1 to plot the pruned tree
+prp(ptree_loss_matrix, extra=1)
+# fancyRpartPlot((ptree_loss_matrix))
+rpart.plot(ptree_prior, extra=1, tweak=1.6)
+```
+
+One final tree using more options:case_weights, a vector contains weights of 1 for the non-defaults in the training set, and weights of 3 for defaults in the training sets. By specifying higher weights for default, the model will assign higher importance to classifying defaults correctly.
+```{r}
+case_weights <- rep(1, nrow(training_set))
+index_defaults <- which(training_set$loan_status==1)
+case_weights[index_defaults] <- 3
+
+# set a seed and run the code to obtain a tree using weights, minsplit and minbucket
+set.seed(345)
+tree_weights <- rpart(loan_status ~ ., method = "class", 
+                      data = training_set, 
+                      weights = case_weights, 
+                      control = rpart.control( minsplit=5, minbucket=2, cp = 0.001))
+
+# Plot the cross-validated error rate for a changing cp
+plotcp(tree_weights)
+
+# Create an index for of the row with the minimum xerror
+index <- which.min(tree_weights$cp[ , "xerror"])
+
+# Create tree_min
+tree_min <- tree_weights$cp[index, "CP"]
+
+# Prune the tree using tree_min
+ptree_weights <- prune(tree_weights, cp=tree_min)
+
+# Plot the pruned tree using the rpart.plot()-package
+# prp(ptree_weights, extra=1, main="Weighted Decision Tree")
+# fancyRpartPlot(ptree_weights)
+rpart.plot(ptree_weights, extra=1, tweak=1.2)
+```
+
+Confusion matrices and accuracy of our final trees
+```{r}
+# Over the past few exercises, you have constructed quite a few pruned decision trees, with four in total. As you can see, the eventual number of splits varies quite a bit from one tree to another:
+# ptree_undersample   7 splits
+# ptree_prior   9 splits
+# ptree_loss_matrix   24 splits
+# ptree_weights   6 splits
+
+# Make predictions for each of the pruned trees using the test set.
+pred_undersample <- predict(ptree_undersample, newdata=test_set, type="class")
+pred_prior <- predict(ptree_prior, newdata=test_set, type="class")
+pred_loss_matrix <- predict(ptree_loss_matrix, newdata=test_set, type="class")
+pred_weights <- predict(ptree_weights, newdata=test_set, type="class")
+  
+# construct confusion matrices using the predictions.
+compute_acc <- function(pred_model) {
+  confusion <- table(test_set$loan_status, pred_model)
+  acc <- sum(diag(confusion)) / nrow(test_set)
+  paste("Prediction accuracy", round(acc,2))
+}
+
+library(purrr)
+map(list(Model1=pred_undersample, Model2=pred_prior, Model3=pred_loss_matrix, Model4=pred_weights), compute_acc)
+```
+
+
+ROC-curves for comparison of tree-based models
+```{r}
+library(pROC)
+
+predictions_undersample <- predict(ptree_undersample, newdata = test_set)[,2]
+predictions_prior <- predict(ptree_prior, newdata = test_set)[,2]
+predictions_loss_matrix <- predict(ptree_loss_matrix, newdata = test_set)[,2]
+predictions_weights <- predict(ptree_weights, newdata = test_set)[,2]
+
+
+# Construct the objects containing ROC-information
+ROC_undersample <- roc(test_set$loan_status, predictions_undersample)
+ROC_prior <- roc(test_set$loan_status, predictions_prior)
+ROC_loss_matrix <- roc(test_set$loan_status, predictions_loss_matrix)
+ROC_weights <- roc(test_set$loan_status, predictions_weights)
+
+# Draw all ROCs on one 
+
+ROC_undersample$title <- "undersample"
+ROC_prior$title <- "prior"
+ROC_loss_matrix$title <- "loss_matrix"
+ROC_weights$title <- "weighted"
+
+roc_models <- map_df(list(ROC_undersample, ROC_prior, ROC_loss_matrix, ROC_weights),
+    function(df) data.frame(Specificity=df$specificities, 
+                            Sensitivity=df$sensitivities,
+                            Model=(df$title)))
+roc_models$Model <- as.factor(roc_models$Model)   
+
+library(ggplot2)
+ggplot(data=roc_models,aes(x=Specificity, y=Sensitivity, col=Model)) + 
+  geom_line(size=1) + 
+  scale_x_reverse() +
+  scale_color_manual(values=c("black", "blue", "red", "green")) +
+  theme(legend.position=c(0.75,0.4),
+        panel.grid.minor = element_blank()) +
+  labs(title="ROCs")
+
+
+# Compute the AUCs
+map(list(ROC_undersample, ROC_prior, ROC_loss_matrix, ROC_weights), auc)
+```
+
